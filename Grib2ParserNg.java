@@ -1,8 +1,11 @@
 package weather.nmc.pop.fc;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.math.BigDecimal;
+import java.nio.channels.FileChannel;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -100,6 +103,57 @@ public class Grib2ParserNg {
 		}
 	}
 	
+	public void getFileDate(String outPutPath,String elementName,String element,Date date,String timeStep){
+		
+		SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd");
+		String fileDay = sdf.format(date);
+		int hour = date.getHours();
+		String LastFileDate = null;   //上一次nc文件的日期
+		String NextFileDate = null;   //这一次nc文件的日期
+		if(hour>=18){      //判断，如果当前时间为18点以前，则读取08时次的grib2文件，否则读取20时次的grib2文件
+			NextFileDate = fileDay+"2000"+timeStep;
+			LastFileDate= fileDay+"0800"+timeStep;
+		}else{
+			NextFileDate = fileDay+"0800"+timeStep;
+			Calendar cal = Calendar.getInstance();
+			cal.setTime(date);
+			cal.add(Calendar.DAY_OF_MONTH, -1);
+			date = cal.getTime();
+			String LastFileDay = sdf.format(date);
+			LastFileDate = LastFileDay + "2000" + timeStep;
+		}
+		
+		
+		FileChannel in = null;  
+	    FileChannel out = null;  
+	    FileInputStream inStream = null;  
+	    FileOutputStream outStream = null;
+		for(int t=0;t<2;t++){
+			String LastFileName = outPutPath + elementName +"/" + element+ "_" + LastFileDate + t + ".nc";
+			String NextFileName = outPutPath + elementName +"/" + element+ "_" + NextFileDate + t + ".nc";
+			 try {
+			    	inStream = new FileInputStream(LastFileName);  
+			        outStream = new FileOutputStream(NextFileName);
+			        in = inStream.getChannel();
+			        out = outStream.getChannel();  
+			        in.transferTo(0, in.size(), out);  
+			    	
+				} catch (Exception e) {
+					e.printStackTrace();
+				}finally{
+					try {
+						in.close();
+						out.close();
+						inStream.close();
+						outStream.close();
+					} catch (Exception e2) {
+						e2.printStackTrace();
+					}
+				}
+		}
+//		String filename = outPutPath + elementName +"/" + element+ "_" + fileDate + "_" + t + ".nc";
+	}
+	
 	public void ReadGrib2File(String FcType)throws Exception{   //解析grib2文件,并写netcdf文件,非风力风向类型
 		Date date=new Date();
 		DateFormat format=new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
@@ -164,6 +218,12 @@ public class Grib2ParserNg {
 //		String fileName = "Z_NWGD_C_BABJ_P_RFFC_SCMOC-ER03_201608170800_24003.GRB2";
 		System.out.println("begin open grib2 file -->"+fileName);
 		//初始经纬度
+		File file = new File(fileName);
+		if(!file.exists()){   //判断源文件是否存在,若存不存在，则直接复制上一个时次生成的nc文件
+			getFileDate(outPutPath, elementName, elementName, date, timeStep);
+			return;
+		}
+		
 		GridDataset gds = ucar.nc2.dt.grid.GridDataset.open(fileName);
 		
 		GridDatatype grid = gds.findGridDatatype(element);
@@ -294,7 +354,6 @@ public class Grib2ParserNg {
 							lon_min = k / ratio;
 							lon_max = lon_min+1;
 						}
-						
 						float lon_1Km = lonng[k];
 						float lat_5Km_min = (float) (Math.round(lat[lat_min]*1000)/1000.000);
 						float lat_5Km_max = (float) (Math.round(lat[lat_max]*1000)/1000.000);
@@ -307,7 +366,6 @@ public class Grib2ParserNg {
 							short data = DoubleLineInter(i, lat_min, lat_max, lon_min, lon_max, lat_1Km, lon_1Km, lat_5Km_min, lat_5Km_max, lon_5Km_min, lon_5Km_max,FcType);  //通过插值获取降水量的值
 							gg[arrayIndex * latRange * lonRange + j * lonRange + k] = data;
 						}
-						
 					}
 				}
 				
@@ -343,163 +401,6 @@ public class Grib2ParserNg {
 		/***************************************************写nc文件end*************************************************************/
 	}
 	
-	/*public void ReadGrib2File(String FcType)throws Exception{   //解析grib2文件,并写netcdf文件,非风力风向类型
-		Date date=new Date();
-		InputStream inputStream = Grib2ParserNg.class.getClassLoader().getResourceAsStream("configs/pro.properties");
-	 	Properties properties = new Properties();
-		properties.load(inputStream);
-		String pro = properties.getProperty(FcType);     //获取要素类型名称，并且用要素名称作为后来生成的nc文件的名称
-		String element = pro.split(",")[1];//grib2文件要素名称
-		String fileNameHead = pro.split(",")[0];//文件名头部分
-		String timeStep = pro.split(",")[2];   //文件名时间步长
-		String elementName = pro.split(",")[3];    //写nc文件的要素名称
-		String filePath = properties.getProperty("filePath");  //grib2文件路径
-		String outPutPath = properties.getProperty("outPutPath");//输出目标路径
-		SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd");
-		String fileDay = sdf.format(date);
-		int hour = date.getHours();
-		String fileDate = null;
-		if(hour>18){      //判断，如果当前时间为18点以前，则读取08时次的grib2文件，否则读取20时次的grib2文件
-			fileDate = fileDay+"2000"+timeStep;
-		}else{
-			fileDate = fileDay+"0800"+timeStep;
-		}
-		String fileName = filePath + fileDay + "/" + fileNameHead + fileDate + ".GRB2";   //文件名，先注释掉，业务化后再打开
-		//初始经纬度
-//		startLat = 0;   
-//		startLon = 70;
-//		endLat = 60;
-//		endLon = 140;
-//		ratio = 5;
-		
-		GridDataset gds = ucar.nc2.dt.grid.GridDataset.open(fileName);
-		GridDatatype grid = gds.findGridDatatype(element);
-		GridDatatype subGrid = grid.makeSubset(null, null, new LatLonRect(new LatLonPointImpl(startLat,startLon),new LatLonPointImpl(endLat,endLon)), 1, 1, 1);
-//		System.out.println("subGrid=>"+subGrid.readVolumeData(0).getSize()+"=>"+Arrays.toString(subGrid.readVolumeData(0).getShape()));
-		int gridRank = grid.getRank();
-//		System.out.println("gridRank=>"+gridRank);
-//		System.out.println("gridShape=>"+Arrays.toString(grid.getShape()));
-		
-//		System.out.println("dimsLen=>"+Arrays.toString(dimsLen));
-		
-		lat = (float[])gds.getNetcdfDataset().findVariable("lat").read().copyTo1DJavaArray();//原始文件纬度
-		
-		sourceLatRange = subGrid.getDimension(subGrid.getYDimensionIndex()).getLength();
-		
-		LatLonRect latLonRect = gds.getBoundingBox();
-		
-		latLonStep = (float)(Math.round((latLonRect.getWidth())/(lat.length - 1)/ratio*100))/100;  //步长
-		
-		latRange = ratio * (sourceLatRange - 1) + 1;
-		
-		lon = (float[])gds.getNetcdfDataset().findVariable("lon").read().copyTo1DJavaArray();  
-		
-		sourceLonRange = subGrid.getDimension(subGrid.getXDimensionIndex()).getLength();
-		
-		lonRange = ratio * (sourceLonRange - 1) + 1;
-		
-		latng = new float[latRange];
-		
-		for(int i = 0; i<latRange;i++ ){
-			latng[i] = (float) (Math.round((lat[0] + i*latLonStep)*100) / 100.00);//0.01F
-		}
-		
-		lonng = new float[lonRange];
-		for(int i = 0; i<lonRange;i++ ){
-			lonng[i] = (float) (Math.round((lon[0] + i*latLonStep)*100) / 100.00);//0.01F
-		}
-		
-//		System.out.println("latLonStep=>"+latLonStep);
-		
-		time = (double[])gds.getNetcdfDataset().findVariable("time").read().copyTo1DJavaArray();
-		
-		timeRange = time.length;
-		//source = new float[time.length*lat.length*lon.length];
-//		System.out.println("timeRage => "+timeRange+" latRange => "+ latRange + " lonRange => "+lonRange);
-		
-		//读取原始数据
-		if("rh".equals(FcType)){
-			source3 = (float[][][][])subGrid.readDataSlice(-1, -1, -1, -1).copyToNDJavaArray();
-		}else{
-			source = (float[][][])subGrid.readDataSlice(-1, -1, -1, -1).copyToNDJavaArray();
-		}
-		
-//		System.out.println("source len=>"+source.length);
-		DateFormat format=new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-		String time1=format.format(date);
-		System.out.println("开始时间："+time1);
-		long begin = System.currentTimeMillis(); 
-		//写nc文件
-//		String filename = "/home/luobing/nc/pop3h.nc";    
-//		String filename = "pop3h.nc";
-		String filename = outPutPath + element+ "_" + fileDate + ".nc";
-		System.out.println("输出路径："+filename);
-	    NetcdfFileWriter dataFile = null;
-//		Nc4Chunking chunker = Nc4ChunkingStrategy.factory(Nc4Chunking.Strategy.grib,5,false);
-	    Nc4Chunking chunker = Nc4ChunkingStrategy.factory(Nc4Chunking.Strategy.standard,5,false);//这种类型写的文件访问速度最快
-//		Nc4Chunking chunker = Nc4ChunkingStrategy.factory(Nc4Chunking.Strategy.standard,9,false);
-		NetcdfFileWriter.Version version = NetcdfFileWriter.Version.netcdf4;
-	    dataFile = NetcdfFileWriter.createNew(version, filename,chunker);
-    	Dimension xDim = dataFile.addDimension(null, "lat", latRange);
-        Dimension yDim = dataFile.addDimension(null, "lon", lonRange);
-//        Dimension zDim = dataFile.addDimension(null, "time", TimeCount);
-        Dimension zDim = dataFile.addDimension(null, "time", timeRange);
-        List<Dimension> dims_Element = new ArrayList<Dimension>();
-        List<Dimension> dims_Lat = new ArrayList<Dimension>();
-        List<Dimension> dims_Lon = new ArrayList<Dimension>();
-        List<Dimension> dims_Time = new ArrayList<Dimension>();
-        dims_Lat.add(xDim);
-        dims_Lon.add(yDim);
-        dims_Time.add(zDim);
-        dims_Element.add(zDim);
-        dims_Element.add(xDim);
-        dims_Element.add(yDim);
-        Variable dataV = dataFile.addVariable(null, elementName, DataType.SHORT,dims_Element);
-        Variable latV = dataFile.addVariable(null, "lat", DataType.FLOAT,dims_Lat);
-        Variable lonV = dataFile.addVariable(null, "lon", DataType.FLOAT,dims_Lon);
-        Variable timeV = dataFile.addVariable(null, "time", DataType.DOUBLE,dims_Time);
-        lonV.addAttribute(new Attribute("units", "degrees_east"));
-        latV.addAttribute(new Attribute("units", "degrees_north"));
-        dataFile.create();
-        short[]as = new short[TimeCount * (latRange) * (lonRange)];
-//        short[]as = new short[timeRange * (latRange) * (lonRange)];
-		int lat_min,lat_max,lon_min,lon_max;
-		for(int i =0;i<TimeCount;i++){
-//		for(int i =0;i<timeRange;i++){
-			for(int j = 0; j<latRange-1;j++){
-				lat_min = j / ratio;
-				lat_max = lat_min+1;
-				float lat_1Km = latng[j];
-				for(int k =0;k<lonRange-1;k++){
-					lon_min = k / ratio;
-					lon_max = lon_min+1;
-					float lon_1Km = lonng[k];
-					float lat_5Km_min = (float) (Math.round(lat[lat_min]*1000)/1000.000);
-					float lat_5Km_max = (float) (Math.round(lat[lat_max]*1000)/1000.000);
-					float lon_5Km_min = (float) (Math.round(lon[lon_min]*1000)/1000.000);
-					float lon_5Km_max = (float) (Math.round(lon[lon_max]*1000)/1000.000);
-					short data = DoubleLineInter(i, lat_min, lat_max, lon_min, lon_max, lat_1Km, lon_1Km, lat_5Km_min, lat_5Km_max, lon_5Km_min, lon_5Km_max,FcType);  //通过插值获取降水量的值
-					
-					
-					as[i * latRange * lonRange + j * lonRange + k] = data;
-				}
-			}
-		}
-//		Array a  = Array.factory(DataType.SHORT, new int[]{timeRange,latng.length,lonng.length},as);
-		Array a  = Array.factory(DataType.SHORT, new int[]{TimeCount,latng.length,lonng.length},as);
-		dataFile.write(dataV, a);
-		dataFile.write(timeV, Array.factory(time));
-		dataFile.write(latV, Array.factory(latng));
-		dataFile.write(lonV, Array.factory(lonng));
-		dataFile.close();
-		gds.close();
-		long end = System.currentTimeMillis();
-		Date date1=new Date();
-		String time2=format.format(date1);
-		System.out.println("结束时间："+time2);
-		System.out.println("运行时间："+(end-begin)+"ms");
-	}*/
-	
 	public void ReadGrib2WindFile(String FcType)throws Exception{
 		Date date=new Date();
 		InputStream inputStream = Grib2ParserNg.class.getClassLoader().getResourceAsStream("configs/pro.properties");
@@ -525,6 +426,12 @@ public class Grib2ParserNg {
 		String fileName = filePath + fileDay + "/" + fileNameHead + fileDate + ".GRB2";   //文件名，先注释掉，业务化后再打开
 		System.out.println("begin open grib2 file -->"+fileName);
 //		String fileName = "Z_NWGD_C_BABJ_P_RFFC_SCMOC-EDA10_201608030800_24003.GRB2";
+		File file = new File(fileName);
+		if(!file.exists()){   //判断源文件是否存在,若存不存在，则直接复制上一个时次生成的nc文件
+			getFileDate(outPutPath, elementName, elementName, date, timeStep);
+			return;
+		}
+		
 		GridDataset gds = ucar.nc2.dt.grid.GridDataset.open(fileName);
 		GridDatatype gridU = gds.findGridDatatype(elementU);
 		GridDatatype gridV = gds.findGridDatatype(elementV);
@@ -766,7 +673,6 @@ public class Grib2ParserNg {
 		return Data;
 	}
 	
-	
 	public String readHistoryFile(String point,Date date){ //读取历史文件,目前的策略是一个点读一次文件，感觉不太好，最好是先收集需要读的点，然后再批量读取文件
 		Calendar cal = Calendar.getInstance();
 		
@@ -778,8 +684,6 @@ public class Grib2ParserNg {
 		String fliePath = "";
 		return null;
 	}
-	
-	
 	
 	public float TempDingZheng(float data){//读取温度订正文件
 		//每一个点都会有一个订正值，根据提前生成的nc文件获取订正值
