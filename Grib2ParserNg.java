@@ -74,7 +74,6 @@ public class Grib2ParserNg {
 	
 	private float latLonStep = 0.01F;
 	
-	
 	private float[][][] tempCorrection = null;
 	
 //	static String fileName = "Z_NWGD_C_BABJ_P_RFFC_SCMOC-TMP_201607190800_24003.GRB2";
@@ -103,7 +102,7 @@ public class Grib2ParserNg {
 		}
 	}
 	
-	public void getFileDate(String outPutPath,String elementName,String element,Date date,String timeStep){
+	public void CopyFile(String outPutPath,String elementName,String element,Date date,String timeStep){  //复制文件
 		
 		SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd");
 		String fileDay = sdf.format(date);
@@ -123,14 +122,13 @@ public class Grib2ParserNg {
 			LastFileDate = LastFileDay + "2000" + timeStep;
 		}
 		
-		
 		FileChannel in = null;  
 	    FileChannel out = null;  
 	    FileInputStream inStream = null;  
 	    FileOutputStream outStream = null;
 		for(int t=0;t<2;t++){
 			String LastFileName = outPutPath + elementName +"/" + element+ "_" + LastFileDate + "_" + t + ".nc";
-			String NextFileName = outPutPath + elementName +"/" + element+ "_" + NextFileDate + "_" +t + ".nc";
+			String NextFileName = outPutPath + elementName +"/" + element+ "_" + NextFileDate + "_" + t + ".nc";
 			 try {
 			    	inStream = new FileInputStream(LastFileName);  
 			        outStream = new FileOutputStream(NextFileName);
@@ -151,7 +149,6 @@ public class Grib2ParserNg {
 					}
 				}
 		}
-//		String filename = outPutPath + elementName +"/" + element+ "_" + fileDate + "_" + t + ".nc";
 	}
 	
 	public void ReadGrib2File(String FcType)throws Exception{   //解析grib2文件,并写netcdf文件,非风力风向类型
@@ -177,7 +174,7 @@ public class Grib2ParserNg {
 		String fileDate = null;
 		String beginHours = null;
 		
-		if(hour>=16){      //判断，如果当前时间为18点以前，则读取08时次的grib2文件，否则读取20时次的grib2文件
+		if(hour>=17){      //判断，如果当前时间为18点以前，则读取08时次的grib2文件，否则读取20时次的grib2文件
 			beginHours = "20";
 			fileDate = fileDay+"2000"+timeStep;
 		}else{
@@ -220,7 +217,7 @@ public class Grib2ParserNg {
 		//初始经纬度
 		File file = new File(fileName);
 		if(!file.exists()){   //判断源文件是否存在,若存不存在，则直接复制上一个时次生成的nc文件
-			getFileDate(outPutPath, elementName, element, date, timeStep);
+			CopyFile(outPutPath, elementName, element, date, timeStep);
 			return;
 		}
 		
@@ -391,6 +388,8 @@ public class Grib2ParserNg {
 			System.out.println("write netcdf success!!!");
 			dataFile.close();
 		}
+		
+		
 		gds.close();
 		long end = System.currentTimeMillis();
 		Date date1=new Date();
@@ -418,7 +417,7 @@ public class Grib2ParserNg {
 		String fileDay = sdf.format(date);
 		int hour = date.getHours();
 		String fileDate = null;
-		if(hour>=18){      //判断，如果当前时间为18点以前，则读取08时次的grib2文件，否则读取20时次的grib2文件
+		if(hour>=16){      //判断，如果当前时间为18点以前，则读取08时次的grib2文件，否则读取20时次的grib2文件
 			fileDate = fileDay+"2000"+timeStep;
 		}else{
 			fileDate = fileDay+"0800"+timeStep;
@@ -428,7 +427,7 @@ public class Grib2ParserNg {
 //		String fileName = "Z_NWGD_C_BABJ_P_RFFC_SCMOC-EDA10_201608030800_24003.GRB2";
 		File file = new File(fileName);
 		if(!file.exists()){   //判断源文件是否存在,若存不存在，则直接复制上一个时次生成的nc文件
-			getFileDate(outPutPath, elementName, "wind", date, timeStep);
+			CopyFile(outPutPath, elementName, "wind", date, timeStep);
 			return;
 		}
 		
