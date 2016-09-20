@@ -4,9 +4,11 @@ import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStreamWriter;
 import java.math.BigDecimal;
 import java.text.DateFormat;
 import java.text.ParseException;
@@ -17,6 +19,7 @@ import java.util.Calendar;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 
 import ucar.ma2.Array;
@@ -26,8 +29,12 @@ import ucar.nc2.Dimension;
 import ucar.nc2.NetcdfFile;
 import ucar.nc2.NetcdfFileWriter;
 import ucar.nc2.Variable;
+import ucar.nc2.dt.GridDatatype;
+import ucar.nc2.dt.grid.GridDataset;
 import ucar.nc2.write.Nc4Chunking;
 import ucar.nc2.write.Nc4ChunkingStrategy;
+import ucar.unidata.geoloc.LatLonPointImpl;
+import ucar.unidata.geoloc.LatLonRect;
 
 public class GetPointAvgError {
 
@@ -43,6 +50,8 @@ public class GetPointAvgError {
 	static float step = 0.01f;
 	static int latGrid = 6001;
 	static int lonGrid = 7001;
+	
+	
 	static HashMap<String, String> sectionMap;
 //	static HashMap<String, int[]> dataMap;
 //	static HashMap<String, Integer> obsMap;
@@ -50,13 +59,8 @@ public class GetPointAvgError {
 	static BufferedWriter fw = null;
 	
 	public static void main(String[] args) {
-		// TODO Auto-generated method stub
-		
-//		GetError();
-//		calculateAvg("139.91,59.99");
 		test();
-//		getAvg();
-//		listTest();
+//		GetError();
 	}
 	
 	public static void test(){
@@ -67,8 +71,8 @@ public class GetPointAvgError {
 		System.out.println("开始时间："+time1);
 		long begin = System.currentTimeMillis(); 
 		
-		String path = "C:\\Users\\Robin\\Desktop\\grib2\\nc\\out.txt";
-//		String path = "/ser/program/fc_program/out.txt";
+//		String path = "C:\\Users\\Robin\\Desktop\\grib2\\nc\\out.txt";
+		String path = "/ser/program/fc_program/out.txt";
 		BufferedReader br = null;
 		String lineTxt = null;
 		sectionMap = new HashMap<String, String>();     //经纬度编号作为key，站号作为value
@@ -79,7 +83,7 @@ public class GetPointAvgError {
 //				sectionMap.put(key, value)
 				String a = array[0]; //站号
 				String b = array[1]; //纬度编号
-				String c = array[2]; //经度编号
+				String c = array[2]; //经度编号，经度*100-7000
 				String key = b+","+c;
 				sectionMap.put(key, a);
 //				sectionSet.add(lineTxt);
@@ -88,7 +92,12 @@ public class GetPointAvgError {
 			System.out.println(lineTxt);
 			e.printStackTrace();
 		}
-		getAvg();
+		try {
+			GetPointAvgError avgError = new GetPointAvgError();
+			avgError.getAvg();
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
 		long end = System.currentTimeMillis();
 		Date date1=new Date();
 		String time2=format.format(date1);
@@ -99,8 +108,8 @@ public class GetPointAvgError {
 	/*public static void GetError(){
 		Map map = new HashMap();
 		sectionMap = new HashMap<String, String>();
-		String path ="C:\\Users\\Robin\\Desktop\\grib2\\nc\\tmin_extreme_station.dat";
-		String path1 ="C:\\Users\\Robin\\Desktop\\grib2\\nc\\out.txt";
+		String path ="C:\\Users\\Robin\\Desktop\\grib2\\nc\\ObsStation.dat";
+		String path1 ="out1.txt";
 		
 		BufferedReader br = null;
 		String lineTxt = null;
@@ -172,11 +181,8 @@ public class GetPointAvgError {
 					calculateAvg(e,map.get(k).toString());
 				}else{    //该店周围没有自动站
 					continue;
-					
 				}
 			}
-			
-			System.out.println(i);
 		}
 		
 		try {
@@ -189,11 +195,6 @@ public class GetPointAvgError {
 		System.out.println(sectionMap.size());
 		//获取到点后读文件，获得每个点的平均误差值
 		
-		if(sectionSet.size()>0){   //
-			getAvg();
-		}else{
-			
-		}
 	}*/
 	
 	public static void calculateAvg(String point,String stationId){     //获取点
@@ -220,7 +221,7 @@ public class GetPointAvgError {
 		}
 	}
 	
-	public static void getAvg(){   //读nc文件获取平均值
+	public static void getAvg() throws Exception{   //读nc文件获取平均值
 		
 		InputStream inputStream = GetPointAvgError.class.getClassLoader().getResourceAsStream("configs/pro.properties");
 	 	Properties properties = new Properties();
@@ -231,9 +232,10 @@ public class GetPointAvgError {
 		}
 		String ncPath = properties.getProperty("TempNcPath");
 		String obsPath = properties.getProperty("ObsPath");
-		String elementName = properties.getProperty("temp");
+		String Name = properties.getProperty("temp");
 		String outPutPath =properties.getProperty("outPutPath");
 		String programPath = properties.getProperty("programPath");
+		String elementName = properties.getProperty("elementName");
 		
 		HashMap<String, int[]> dataMap = new HashMap<String,int[]>();//经纬度编号作为key，温度差数组作为value
 		HashMap<String, Integer> obsMap = new HashMap<String, Integer>();//stationid+time作为key，temp作为value
@@ -282,8 +284,8 @@ public class GetPointAvgError {
 			obsCal.add(Calendar.HOUR_OF_DAY, -i);
 			Date nowDate = obsCal.getTime();
 			String obsTime = hourSdf.format(nowDate);
-			obsFilePath = "C:\\Users\\Robin\\Desktop\\grib2\\nc\\obsData\\"+"obs" + obsTime + ".dat";
-//			obsFilePath = obsPath+"obs" + obsTime + ".dat";
+//			obsFilePath = "C:\\Users\\Robin\\Desktop\\grib2\\nc\\obsData\\"+"obs" + obsTime + ".dat";
+			obsFilePath = obsPath+"obs" + obsTime + ".dat";
 			try {
 				
 				File obsFile = new File(obsFilePath);
@@ -326,103 +328,84 @@ public class GetPointAvgError {
 		System.out.println("obsMapSize-->"+obsMap.size());
 		
 	/********************************************************************************************************************************************************************/	
-		//读取nc文件，并且跟当时的有效实况数做对比，并且用预报值减去实况值，并将减去之后的值的和存入dataMap中
-		/*for(int i =1;i<=10;i++){
-//			for(int i =1;i<=10;i++){
+		
+		for(int i =1;i<=10;i++){     //2016.9.9日改成读原始的grib文件
 			fcCal.setTime(date);
 			fcCal.add(Calendar.DAY_OF_MONTH, -i);
 			Date nowDate = fcCal.getTime();
 			String fcBeginDayS = sdf.format(nowDate);
 			String fcBeginTimeS = fcBeginDayS + fcBeginHourS;
-			
-			for(int j=0;j<2;j++){   //由于温度预报nc文件被分成了两个，所以需要循环两次来都这两个文件
-				String fileName = ncPath + elementName + "_" + fcBeginTimeS + "00_" + "24003" + "_" + j + ".nc";
-//				String fileName = "C:\\Users\\Robin\\Desktop\\grib2\\nc\\Temperature_height_above_ground_201608050800_24003_0.nc";
-				System.out.println("open file："+fileName);
-				NetcdfFile ncFile = null;
-				File file = new File(fileName);
-				try {
-					Date fcBeginDate = hourSdf.parse(fcBeginTimeS);
-					if(file.exists()){   //如果文件存在，则读文件
-						System.out.println("file exist");
-						ncFile = NetcdfFile.open(fileName);
-						Variable v = ncFile.findVariable(varName);
-						int timeCount = 0;
-						if(i * 24 < hourCount){
-							timeCount = i * 24 / timeStep;
-						}else{
-							timeCount = hourCount / timeStep;
-						}
-						String timeSection = "0:" + String.valueOf(timeCount - 1);
-						
-						if(j==1){
-							Calendar midCal = Calendar.getInstance();
-							midCal.setTime(fcBeginDate);
-							midCal.add(Calendar.HOUR_OF_DAY, -(timeCount * timeStep));
-							fcBeginTimeS = hourSdf.format(midCal.getTime());
-						}
-//						System.out.println(fcBeginTimeS);
-						
-						String stationId = null;
-						String section = null;
-						Array data =  null;
-						IndexIterator s = null;
-						int [] pointData;
-						for(String key : sectionMap.keySet()){
-							stationId = sectionMap.get(key).toString();
-							section = timeSection + "," + key;
-							data = v.read(section);
-							s =  data.getIndexIterator();
-							if(!dataMap.containsKey(key)){
-								pointData = new int[2];
-							}else{
-								pointData = dataMap.get(key);
-							}
-							Calendar cal = Calendar.getInstance();
-							int timeNum =0;
-							while(s.hasNext()){
-								cal.setTime(fcBeginDate);
-								cal.add(Calendar.HOUR_OF_DAY, -(timeNum * timeStep));
-								String time = hourSdf.format(cal.getTime());
-								String obsKey = stationId + time;
-								int fcData = s.getIntNext();
-								if(obsMap.containsKey(obsKey)){
-									int ObsData =obsMap.get(obsKey);
-									if(999999==ObsData || 9999990==ObsData){
-										timeNum++;
-										continue;
-									}else{  //如果实况值有效，则用预报的值减去实况的值，并记录个数，用数组存放减法之和和个数
-										pointData[0] += (fcData-ObsData);
-										pointData[1]++;
-										dataMap.put(key, pointData);
-									}
-								}else{
-									timeNum++;
-									continue;
-								}
-								timeNum++;
-							}
-						}
-					}else{//如果nc文件不存在
-						System.out.println("file not exist");
-						continue;	
+			String fileName = ncPath + fcBeginDayS + "/" + Name + fcBeginTimeS + "00_" + "24003" + ".GRB2";
+//			String fileName = "C:\\Users\\Robin\\Desktop\\grib2\\nc\\tempnc\\" + Name + fcBeginTimeS + "00_" + "24003" + ".GRB2";
+			System.out.println(fileName);
+			File file = new File(fileName);
+			Date fcBeginDate = hourSdf.parse(fcBeginTimeS);
+			if(file.exists()){
+				System.out.println("file exist");
+				GridDataset gds = ucar.nc2.dt.grid.GridDataset.open(fileName);
+				GridDatatype grid = gds.findGridDatatype(elementName);
+				GridDatatype subGrid = grid.makeSubset(null, null, new LatLonRect(new LatLonPointImpl(beginLat,beginLon),new LatLonPointImpl(endLat,endLon)), 1, 1, 1);
+				float[][][][] source = (float[][][][])subGrid.readDataSlice(-1, -1, -1, -1).copyToNDJavaArray();
+				gds.close();
+				String stationId = null;
+				int [] pointData;
+				
+				for(String key : sectionMap.keySet()){
+					stationId = sectionMap.get(key).toString();
+					if(!dataMap.containsKey(key)){
+						pointData = new int[2];
+					}else{
+						pointData = dataMap.get(key);
 					}
-				} catch (Exception e) {
-					e.printStackTrace();
-				}finally{
-					try {
-						if(ncFile!=null){
-							ncFile.close();	
+					Calendar cal = Calendar.getInstance();
+					
+					int lat = Integer.valueOf(key.split(",")[0]);
+					int lon = Integer.valueOf(key.split(",")[1]);
+					int[] array = getData(lat,lon);  //   array[latMin,latMax,lonMin,lonMax]
+					int lat_min = array[0];
+					int lat_max = array[1];
+					int lon_min = array[2];
+					int lon_max = array[3];
+					float data1 = (lat_max - lat) / 5f;
+					float data2 = (lat - lat_min) / 5f;
+					
+					for(int k = 0;k<source.length;k++){
+						cal.setTime(fcBeginDate);
+						cal.add(Calendar.HOUR_OF_DAY, (k * timeStep));
+						if(cal.getTime().getTime()>date.getTime()){   //当预报时间大于当前时间时停止
+							break;
 						}
-					} catch (IOException e) {
-						e.printStackTrace();
+						String time = hourSdf.format(cal.getTime());
+						String obsKey = stationId + time;
+						float Q11 = source[k][0][lat_min/5][lon_min/5] - 273.15f;
+						float Q21 = source[k][0][lat_min/5][lon_max/5] - 273.15f;
+						float Q12 = source[k][0][lat_max/5][lon_min/5] - 273.15f;
+						float Q22 = source[k][0][lat_max/5][lon_max/5] - 273.15f;
+						float R1 = data1 * Q11 + data2 * Q21;
+						float R2 = data1 * Q12 + data2 * Q22;
+						float P = (((lon_max - lon) / 5f)  * R1 + ((lon - lon_min) / 5f) * R2) * 10f;
+						int fcData = new BigDecimal(P).setScale(0,BigDecimal.ROUND_HALF_UP).intValue();
+//						System.out.println("fc:"+fcData);
+						if(obsMap.containsKey(obsKey)){
+							int ObsData =obsMap.get(obsKey);
+//							System.out.println("obs:"+ObsData);
+							if(999999==ObsData || 9999990==ObsData || ObsData>500 || ObsData<-700 ||fcData>500 || fcData<-700 ){
+								continue;
+							}else{
+								pointData[0] += (fcData-ObsData);
+								pointData[1]++;
+								dataMap.put(key, pointData);
+							}
+						}else{
+							continue;
+						}
 					}
 				}
+			}else{
+				System.out.println("file not exist!!");
 			}
 		}
-		System.out.println("第二阶段");*/
-		
-		for(int i =1;i<=10;i++){
+		/*for(int i =1;i<=10;i++){     
 			fcCal.setTime(date);
 			fcCal.add(Calendar.DAY_OF_MONTH, -i);
 			Date nowDate = fcCal.getTime();
@@ -500,7 +483,7 @@ public class GetPointAvgError {
 					e.printStackTrace();
 				}
 			}
-		} 
+		} */
 		sectionMap = null;    //将Map设置为null，释放内存
 		obsMap = null;
 		
@@ -543,18 +526,18 @@ public class GetPointAvgError {
 			Arrays.sort(array);
 			int index = 0;
 			float minData = Float.valueOf(array[0].toString());   //取最小值
-			float maxData = Float.valueOf(array[array.length-1].toString());  //最大值
+//			float maxData = Float.valueOf(array[array.length-1].toString());  //最大值
+			int index80 = (int) (array.length * 0.8);
+			float data80 = Float.valueOf(array[index80].toString());
 			float errorData = 0;
 			if(minData>=0){
 				index = (int) (array.length * 0.2);
 				errorData = Float.valueOf(array[index].toString());
-			}else if(maxData<=0){
-				index = (int) (array.length * 0.8);
-				errorData = Float.valueOf(array[index].toString());
-			}else{
+			}else if(data80>0){
 				errorData = 0;
+			}else{
+				errorData = Float.valueOf(array[index80].toString());
 			}
-			
 			/*if(minData<0&data80<0 || minData>0&data80>0){
 				errorData = data80;
 			}else{
@@ -562,7 +545,6 @@ public class GetPointAvgError {
 			}*/
 			errorMap.put(gridKey, errorData);
 		}
-		
 		avgMap = null;
 		System.out.println("errorMapSize-->"+errorMap.size());
 		
@@ -615,6 +597,7 @@ public class GetPointAvgError {
 		
 		
 //		将errorMap中的值写入nc文件中，循环经纬度范围为：0:60N,70:140E范围内的点，步长为0.01°
+//		String filename = elementName + "_" + day + fcBeginHourS+ ".nc";
 		String filename = outPutPath + elementName + "_" + day + fcBeginHourS+ ".nc";
 		System.out.println("correction netcdf file name-->"+filename);
 //		String filename = "avgError1.nc";
@@ -641,29 +624,31 @@ public class GetPointAvgError {
 	        Variable latV = dataFile.addVariable(null, "lat", DataType.FLOAT,dims_Lat);
 	        Variable lonV = dataFile.addVariable(null, "lon", DataType.FLOAT,dims_Lon);
 	        Variable timeV = dataFile.addVariable(null, "time", DataType.DOUBLE,dims_Time);
-	        float[] latng = new float[6001];
-	        float lat = 0.01f;
-	        for(int i =0;i<6001;i++){
+	        float[] latng = new float[latGrid];
+	        float lat = 0.00f;
+	        for(int i =0;i<latGrid;i++){
 	        	latng[i] = lat;
 	        	lat+=0.01f;
+	        	lat = new BigDecimal(lat).setScale(2,BigDecimal.ROUND_HALF_UP).floatValue();
 	        }
-	        float[] lonng = new float[7001];
-	        float lon = 70.01f;
-	        for(int i =0;i<7001;i++){
+	        float[] lonng = new float[lonGrid];
+	        float lon = 70.00f;
+	        for(int i =0;i<lonGrid;i++){
 	        	lonng[i] = lon;
 	        	lon+=0.01f;
+	        	lon = new BigDecimal(lon).setScale(2,BigDecimal.ROUND_HALF_UP).floatValue();
 	        }
 	        
 	        dataFile.create();
-	        float[]gg = new float[6001*7001];
+	        float[]gg = new float[latGrid*lonGrid];
 	        for(int i=0;i<latGrid;i++){
 	        	for(int j=0;j<lonGrid;j++){
 	        		float data;
 	        		String key = String.valueOf(i)+","+String.valueOf(j);
-	        		if(pointAvgMap.containsKey(key)){    //如果周围1km内有自动站
+	        		if(pointAvgMap.containsKey(key)){    //如果周围1km内有自动站,则订正值为监测站平均误差
 	        			data = pointAvgMap.get(key);
 //	        			System.out.println("有自动站");
-	        		}else{
+	        		}else{   //如果没有自动站，则误差值为系统误差
 //	        			System.out.println("没有自动站");
 	        			String gridKey = getGridKey(i,j);
 	        			if(errorMap.containsKey(gridKey)){
@@ -672,7 +657,7 @@ public class GetPointAvgError {
 	        				data = 0f;
 	        			}
 	        		}
-	        		gg[7001*i+j] = data;
+	        		gg[lonGrid*i+j] = data;
 	        	}
 	        }
 	        Array dataArray  = Array.factory(DataType.FLOAT, new int[]{1,latGrid,lonGrid},gg);
@@ -745,6 +730,56 @@ public class GetPointAvgError {
 		String gridKey = latS+lonS;
 		
 		return gridKey;
+	}
+	
+	public static int[] getData(int lat,int lon){   //获取周围四个点的值
+		int[] array = new int[4];
+		int latMax;
+		int latMin;
+		int lonMax;
+		int lonMin;
+		if(lat % 5 !=0){
+			latMax = lat;
+			latMin = lat;
+			while(latMax % 5 !=0){
+				latMax++;
+			}
+			while(latMin % 5 !=0){
+				latMin--;
+			}
+		}else{
+			latMax = lat + 1;
+			latMin = lat;
+			while(latMax % 5 !=0){
+				latMax++;
+			}
+		}
+		array[0] = latMin;
+		array[1] = latMax;
+		
+		if(lon % 5 !=0){
+			lonMax = lon;
+			lonMin = lon;
+			while(lonMax % 5 !=0){
+				lonMax++;
+			}
+			while(lonMin % 5 !=0){
+				lonMin--;
+			}
+		}else{
+			lonMax = lon + 1;
+			lonMin = lon;
+			while(lonMax % 5 !=0){
+				lonMax++;
+			}
+		}
+		array[2] = lonMin;
+		array[3] = lonMax;
+		return array;
+	}
+	
+	public static short DoubleLineInter(){   //双线性插值
+		return 0;
 	}
 	
 	
