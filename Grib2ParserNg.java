@@ -28,7 +28,7 @@ import ucar.nc2.write.Nc4ChunkingStrategy;
 import ucar.unidata.geoloc.LatLonPointImpl;
 import ucar.unidata.geoloc.LatLonRect;
 
-public class Grib2ParserNg {
+public class Grib2ParserNg{
 	
 	/**
 	 * 
@@ -103,7 +103,6 @@ public class Grib2ParserNg {
 	}
 	
 	public void CopyFile(String outPutPath,String elementName,String element,Date date,String timeStep){  //复制文件
-		
 		SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd");
 		String fileDay = sdf.format(date);
 		int hour = date.getHours();
@@ -199,10 +198,10 @@ public class Grib2ParserNg {
 				String section = "0," + "0:" + String.valueOf(shape[1]-1) + "," + "0:" + String.valueOf(shape[2]-1);
 //				System.out.println(section);
 				Array data = CorrectionV.read(section);
-				tempCorrection = (float[][][]) data.copyToNDJavaArray();
+				tempCorrection = (float[][][]) data.copyToNDJavaArray();  //放入内存
 				System.out.println(tempCorrection[0].length);
 				System.out.println(tempCorrection[0][0].length);
-				CorrectionFile.close();
+				CorrectionFile.close();   //关闭文件
 			}else{
 				System.out.println("correction file not exist");
 			}
@@ -212,7 +211,7 @@ public class Grib2ParserNg {
 		
 		String fileName = filePath + fileDay + "/" + fileNameHead + fileDate + ".GRB2";   //文件名，先注释掉，业务化后再打开
 		
-//		String fileName = "Z_NWGD_C_BABJ_P_RFFC_SCMOC-ER03_201608170800_24003.GRB2";
+//		String fileName = "Z_NWGD_C_BABJ_P_RFFC_SCMOC-ER03_201609120800_24003.GRB2";
 		System.out.println("begin open grib2 file -->"+fileName);
 		//初始经纬度
 		File file = new File(fileName);
@@ -292,6 +291,7 @@ public class Grib2ParserNg {
 		int realTimeCount = timeRange / realTime;
 		
 		for(int t=0;t<realTimeCount;t++){
+			
 			int arrayIndex = 0;
 			byte[] ee = null;
 			short[]gg = null;
@@ -365,10 +365,8 @@ public class Grib2ParserNg {
 						}
 					}
 				}
-				
 				aa[arrayIndex] = (i+1) * 3;
 				arrayIndex++;
-				System.out.println(i+1);
 			}
 			
 			if("rh".equals(FcType)){
@@ -476,6 +474,7 @@ public class Grib2ParserNg {
 		}
 		int realTime = a.intValue();
 		int realTimeCount = timeRange / realTime;
+		
 		for(int t=0;t<realTimeCount;t++){
 			int arrayIndex = 0;
 			short[]wsd = new short[realTime * (latRange) * (lonRange)];
@@ -599,12 +598,10 @@ public class Grib2ParserNg {
 			Q21 = ValidTempData(source3[time][0][lat_min][lon_max]);
 			Q12 = ValidTempData(source3[time][0][lat_max][lon_min]);
 			Q22 = ValidTempData(source3[time][0][lat_max][lon_max]);
-			
 			int lat = (int) Math.round(lat_1Km * 100);
 			int lon = (int) Math.round(lon_1Km * 100)-7000;
 //			System.out.println(lat+"--"+lon);
 			CorTemp = tempCorrection[0][lat][lon];
-			
 		}else{
 			Q11 = ValidData(source[time][lat_min][lon_min]);
 			Q21 = ValidData(source[time][lat_min][lon_max]);
@@ -617,7 +614,7 @@ public class Grib2ParserNg {
 		float R2 = data1 * Q12 + data2 * Q22;
 		float P = ((lon_5Km_max - lon_1Km) / (lon_5Km_max - lon_5Km_min))  * R1 + ((lon_1Km - lon_5Km_min) / (lon_5Km_max - lon_5Km_min)) * R2;
 //		P = P + CorTemp;
-		short Data = new BigDecimal(P * 10 + CorTemp).setScale(0, BigDecimal.ROUND_HALF_UP).shortValue();
+		short Data = new BigDecimal(P * 10 - CorTemp).setScale(0, BigDecimal.ROUND_HALF_UP).shortValue();
 //		float Data =  (float) (Math.round(P*10)/10.0);
 		return Data;
 	}
@@ -692,5 +689,6 @@ public class Grib2ParserNg {
 		
 		return 0f;
 	}
+
 	
 }
