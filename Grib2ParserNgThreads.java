@@ -21,6 +21,9 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import org.apache.log4j.LogManager;
+import org.apache.log4j.Logger;
+
 import ucar.ma2.Array;
 import ucar.ma2.DataType;
 import ucar.nc2.Attribute;
@@ -35,9 +38,6 @@ import ucar.nc2.write.Nc4ChunkingStrategy;
 import ucar.unidata.geoloc.LatLonPointImpl;
 import ucar.unidata.geoloc.LatLonRect;
 
-import org.apache.log4j.LogManager;
-import org.apache.log4j.Logger;
-
 public class Grib2ParserNgThreads implements Runnable {
 	
 	/**
@@ -47,7 +47,6 @@ public class Grib2ParserNgThreads implements Runnable {
 	 * 
 	 * 
 	 */
-	
 	private static float[] lat = null;  //grib2文件纬度
 	
 	private static float[] lon = null;   //grib2文件经度
@@ -90,31 +89,41 @@ public class Grib2ParserNgThreads implements Runnable {
 	
 //	private static int realTime,realTimeCount;
 	
-	private static int ThreadNum = 10;//线程数
-	private static byte[] ee,ee_12h;        
+	private static int ThreadCount = 10;//线程数
+	private static byte[] ee,ee_12h,rh_max_12h,rh_min_12h;        
 	private static short[]gg,gg_12h;
-	private static short[]wsd,wdr,wsd_12h,wdr_12h;
+	private static short[]wsd,wdr,wsd_12h,wdr_12h,temp_max_12h,temp_min_12h;
+	
 	
 	private static Set<Integer> set = new HashSet<Integer>();
+	private static Set<Integer> set_12h = new HashSet<Integer>();
 	private static String FcType;
 	private static int timeNum;
 	private static ConcurrentLinkedQueue<Integer> queue = new ConcurrentLinkedQueue<Integer>();
 	private static ConcurrentLinkedQueue<Integer> queue_1h = new ConcurrentLinkedQueue<Integer>();
-	private static boolean flag = true;
+	private static ConcurrentLinkedQueue<Integer> queue_12h = new ConcurrentLinkedQueue<Integer>();
+//	private static boolean flag = true;
+	
+	private static int ThreadNum = 1;//  1:DataCal(),2:interpolation_12h(),3:interpolation()
+	
 	static Logger logger = LogManager.getLogger(Grib2ParserNgThreads.class.getName());
 	@Override
 	public void run() {
 		Grib2ParserNgThreads gpt = new Grib2ParserNgThreads();
 		try {
-			if(flag){
+			
+			if(ThreadNum == 1){
 				if("wind".equals(FcType)){
 					gpt.WindDataCal();
 				}else{
 					gpt.DataCal();
 				}
+			}else if(ThreadNum == 2){
+				gpt.interpolation_12h();
 			}else{
 				gpt.interpolation();
 			}
+			
 		} catch (Exception e) {
 			logger.error(e);
 			e.printStackTrace();
@@ -122,13 +131,8 @@ public class Grib2ParserNgThreads implements Runnable {
 	}
 
 	public static void main(String[] args) {
-		
 		Grib2ParserNgThreads gpt = new Grib2ParserNgThreads();
 		FcType = args[0];
-		
-//		String dateS = args[1];
-//		FcType = "wind";
-//		String dateS = "2016101008";
 		SimpleDateFormat sdfh = new SimpleDateFormat("yyyyMMddHH");
 		try {
 			Date date;
@@ -137,8 +141,6 @@ public class Grib2ParserNgThreads implements Runnable {
 			}else{
 				date = new Date();
 			}
-//			Date date = sdfh.parse(dateS);
-//			Date date = new Date();
 			DateFormat format=new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
 			String time1=format.format(date);
 			System.out.println("开始时间："+time1);
@@ -154,6 +156,7 @@ public class Grib2ParserNgThreads implements Runnable {
 			String[] fileTimeArray = fileTime.split(",");   //
 			String pro = properties.getProperty(FcType);     //获取要素类型名称，并且用要素名称作为后来生成的nc文件的名称
 			String filePath = properties.getProperty("filePath");
+			String timeStep_12h = properties.getProperty("timeStep_12h");
 			String element = null;
 			String elementU = null;
 			String elementV = null;
@@ -167,6 +170,7 @@ public class Grib2ParserNgThreads implements Runnable {
 				fileNameHead = pro.split(",")[0];//文件名头部分
 				timeStep = pro.split(",")[3];   //文件名时间步长
 				elementName = pro.split(",")[4];    //写nc文件的要素名称
+				element = "wind";
 			}else{
 				fileNameHead = pro.split(",")[0];//文件名头部分
 				element = pro.split(",")[1].trim();//grib2文件要素名称
@@ -177,37 +181,55 @@ public class Grib2ParserNgThreads implements Runnable {
 				}
 			}
 			String outPutPath = properties.getProperty("outPutPath");//输出目标路径
+			String outPutPath_12h = properties.getProperty("outPutPath_12h");//12h输出目标路径
 			SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd");
 			String fileDay = sdf.format(date);
 			int hour = date.getHours();
 			String fileDate = null;
+			String fileDate_12h = null;
 			if(hour>=12){      //判断，如果当前时间为12点以前，则读取08时次的grib2文件，否则读取20时次的grib2文件
 				fileDate = fileDay+"2000"+timeStep;
+				fileDate_12h = fileDay+"2000"+timeStep_12h;
 			}else{
 				fileDate = fileDay+"0800"+timeStep;
+				fileDate_12h = fileDay+"0800"+timeStep_12h;
 			}		
 			if("wind".equals(FcType)){
 				gpt.ReadGrib2WindFile(date,elementU,elementV,fileNameHead,timeStep,elementName,outPutPath,filePath);
-//(Date date,String elementU,String elementV,String fileNameHead,String timeStep,String elementName,String outPutPath,String filePath)				
 			}else{
 				gpt.ReadGrib2File(date,element,fileNameHead,timeStep,elementName,outPutPath,filePath,corFilePath);
 			}
-//(Date date,String fcTime,String element,String fileNameHead,String timeStep,String elementName,String outPutPath,String filePath,String corFilePath)			
 			for(timeNum = 0;timeNum<fcTimeArray.length;timeNum++){
 				if("wind".equals(FcType)){
 					wsd = new short[Integer.valueOf(fileTimeArray[0]) * (latRange) * (lonRange)];
 					wdr = new short[Integer.valueOf(fileTimeArray[0]) * (latRange) * (lonRange)];
 					//new12小时的文件，后面加个判断，要是第二次循环进来就不new了，接着上次的数组接着写。
-					
-					
-//					wsd_12h = new short[Integer.valueOf(fileTimeArray[1]) * (latRange) * (lonRange)];
-//					wdr_12h = new short[Integer.valueOf(fileTimeArray[1]) * (latRange) * (lonRange)];
-				}else if("rh".equals(FcType) || "cloud".equals(FcType)){
+					if(timeNum==0){
+						wsd_12h = new short[Integer.valueOf(fileTimeArray[1]) * (latRange) * (lonRange)];
+						wdr_12h = new short[Integer.valueOf(fileTimeArray[1]) * (latRange) * (lonRange)];
+					}
+				}else if("cloud".equals(FcType)){
 					ee = new byte[Integer.valueOf(fileTimeArray[0]) * (latRange) * (lonRange)];
-//					ee_12h = new byte[Integer.valueOf(fileTimeArray[1]) * (latRange) * (lonRange)];
-				}else{
+					/*if(timeNum==0){
+						ee_12h = new byte[Integer.valueOf(fileTimeArray[1]) * (latRange) * (lonRange)];
+					}*/
+				}else if("rh".equals(FcType)){
+					ee = new byte[Integer.valueOf(fileTimeArray[0]) * (latRange) * (lonRange)];
+					if(timeNum==0){
+						rh_max_12h = new byte[Integer.valueOf(fileTimeArray[1]) * (latRange) * (lonRange)];
+						rh_min_12h = new byte[Integer.valueOf(fileTimeArray[1]) * (latRange) * (lonRange)];
+					}
+				}else if("temp".equals(FcType)){
 					gg = new short[Integer.valueOf(fileTimeArray[0]) * (latRange) * (lonRange)];
-//					gg_12h = new short[Integer.valueOf(fileTimeArray[1]) * (latRange) * (lonRange)];
+					if(timeNum==0){
+						temp_max_12h = new short[Integer.valueOf(fileTimeArray[1]) * (latRange) * (lonRange)];
+						temp_min_12h = new short[Integer.valueOf(fileTimeArray[1]) * (latRange) * (lonRange)];
+					}
+				}else{ //降水要素
+					gg = new short[Integer.valueOf(fileTimeArray[0]) * (latRange) * (lonRange)];
+					if(timeNum==0){
+						gg_12h = new short[Integer.valueOf(fileTimeArray[1]) * (latRange) * (lonRange)];
+					}
 				}
 //	        	timeData = new double[realTime];
 				queue.clear();
@@ -215,27 +237,56 @@ public class Grib2ParserNgThreads implements Runnable {
 				for(int j = (timeNum == 0 ? 0 : 32);j < (timeNum == 0 ? 32 : 80);j++){ //将时次放入队列中   ,没有办法，只能这样写死了，以后需求变了就改这里吧，将80个时次文件分为前一个文件32时次，后一个文件48时次，其中前一个文件的前24小时是逐小时的，
 					queue.add(j);
 				}
-				ExecutorService exe = Executors.newFixedThreadPool(ThreadNum);
-				for (int i = 0; i < ThreadNum; i++){
+				
+				for(int j = (timeNum == 0 ? 0 : 8);j < (timeNum == 0 ? 8 : 20);j++){ //将逐12小时时次放入队列中
+					queue_12h.add(j);
+				}
+				
+				ExecutorService exe = Executors.newFixedThreadPool(ThreadCount);
+				for (int i = 0; i < ThreadCount; i++){
 					exe.execute(gpt);                                              //第一次启动线程，
 		        }
 				exe.shutdown();
 				while (true) {
 		            if (exe.isTerminated()) {
-		            	flag = false;
-		                System.out.println("线程运行结束");
-		                
+		            	//先计算逐12小时的数据，因为逐12小时不会改变逐3小时的原始数据，逐小时的数据会改变逐3小时的原始数据值
+		            	ThreadNum ++;   //此时ThreadNum应该=2
+		            	
+		            	if(!"cloud".equals(FcType)){   //云量没有逐12小时预报
+		            		ExecutorService exe_12h = Executors.newFixedThreadPool(ThreadCount);   //从新开线程计算逐12小时的数据
+			                for (int i = 0; i < ThreadCount; i++){
+			                	exe_12h.execute(gpt);
+					        }
+			                exe_12h.shutdown();
+			                while(true){
+			                	if (exe_12h.isTerminated()) {
+			                		if(timeNum == 1 ){   //逐小时数据在第二次循环才开始写文件
+			                			if("wind".equals(FcType) || "rh".equals(FcType) || "temp".equals(FcType)){
+			                				gpt.WriteWindNcFile_12h(outPutPath_12h,elementName,element,fileDate_12h,Integer.valueOf(fileTimeArray[1]));
+			                			}else{
+			                				gpt.WriteNcFile_12h(outPutPath_12h, elementName, element, fileDate_12h, Integer.valueOf(fileTimeArray[1]));
+			                			}
+			                		}
+			                		break;
+			                	}
+			                }
+		            	}
+		            	
+/******************************************************************************************************************************************************/			            	
+//		            	flag = false;
+			            ThreadNum ++; //此时ThreadNum 应该=3
 		                if(timeNum == 0){    //如果是第一个文件,为了获取前24小时逐小时的值，要用拉格朗日插值法或者别的插值方法，且写文件只用写逐小时的第一个文件
-		                	ExecutorService exe_1h = Executors.newFixedThreadPool(ThreadNum);   //从新开线程计算,反演数据，真的是好麻烦啊
-			            	for (int i = 0; i < ThreadNum; i++){
+		                	ExecutorService exe_1h = Executors.newFixedThreadPool(ThreadCount);   //从新开线程计算逐小时的数据,反演数据，真的是好麻烦啊
+			            	for (int i = 0; i < ThreadCount; i++){
 			            		exe_1h.execute(gpt);
 					        }
 			            	exe_1h.shutdown();
 							while (true) {
 								if (exe_1h.isTerminated()) {
-									flag  = true;
+//									flag  = true;
+									ThreadNum = 1;
 									if("wind".equals(FcType)){
-										gpt.WriteWindNcFile(outPutPath,elementName,fileDate,Integer.valueOf(fileTimeArray[0]));
+										gpt.WriteWindNcFile(outPutPath,elementName,element,fileDate,Integer.valueOf(fileTimeArray[0]));
 									}else{
 										gpt.WriteNcFile(outPutPath,elementName,element,fileDate,Integer.valueOf(fileTimeArray[0]));
 									}
@@ -244,12 +295,14 @@ public class Grib2ParserNgThreads implements Runnable {
 							}
 		                }else{//如果为第二次，则既要写逐小时文件，又要写逐12小时文件。
 		                	if("wind".equals(FcType)){
-								gpt.WriteWindNcFile(outPutPath,elementName,fileDate,Integer.valueOf(fileTimeArray[0]));
+								gpt.WriteWindNcFile(outPutPath,elementName,element,fileDate,Integer.valueOf(fileTimeArray[0]));
 							}else{
 								gpt.WriteNcFile(outPutPath,elementName,element,fileDate,Integer.valueOf(fileTimeArray[0]));
 							}
 		                }
 		                System.gc();   //建议回收垃圾，只是建议，具体什么时候回收垃圾要看jvm的心情
+		                //在这里进行逐12小时的数据计算
+		                System.gc();
 		                Thread.sleep(500);
 		                break;
 		            }
@@ -269,7 +322,7 @@ public class Grib2ParserNgThreads implements Runnable {
 	}
 	
 	public void interpolation()throws Exception{                //插值，将逐3小时前24小时的数据插值成逐小时的数据
-		while(!queue_1h.isEmpty()){
+		while(!queue_1h.isEmpty()){  //1，2，4，5，7，8，10，11，13，14，16，17，19，20，22，23
 			int time = queue_1h.poll();
 			int before_time = time % 3 == 1 ? time - 1 : time - 2;
 			int after_time = time % 3 == 2 ? time + 1 : time + 2;
@@ -282,10 +335,10 @@ public class Grib2ParserNgThreads implements Runnable {
 						short wind_v_data;
 						if(time % 3 == 1){
 							wind_u_data = wsd[before_time * latRange * lonRange + j * lonRange + k];
-							wind_v_data = wsd[before_time * latRange * lonRange + j * lonRange + k];
+							wind_v_data = wdr[before_time * latRange * lonRange + j * lonRange + k];
 						}else{
 							wind_u_data = wsd[after_time * latRange * lonRange + j * lonRange + k];
-							wind_v_data = wsd[after_time * latRange * lonRange + j * lonRange + k];
+							wind_v_data = wdr[after_time * latRange * lonRange + j * lonRange + k];
 						}
 						wsd[time * latRange * lonRange + j * lonRange + k] = wind_u_data;
 						wdr[time * latRange * lonRange + j * lonRange + k] = wind_v_data;
@@ -293,7 +346,6 @@ public class Grib2ParserNgThreads implements Runnable {
 						short before_data = gg[before_time * latRange * lonRange + j * lonRange + k];
 //						short avg_data = new BigDecimal(before_data).divide(new BigDecimal(3),0,BigDecimal.ROUND_HALF_UP).shortValue();
 						gg[time * latRange * lonRange + j * lonRange + k] = before_data;
-						
 					}else if(FcType.equals("rh") || "cloud".equals(FcType)){ //相对湿度用拉格朗日插值   byte数组ee[]
 						byte before_data = ee[before_time * latRange * lonRange + j * lonRange + k];
 						byte after_data = ee[after_time * latRange * lonRange + j * lonRange + k];
@@ -316,9 +368,97 @@ public class Grib2ParserNgThreads implements Runnable {
 		}
 	}
 	
-	public void interpolation_12h()throws Exception{
-		
-		
+	public void interpolation_12h()throws Exception{//逐12小时数据处理，多线程，时次存入ConcurrentQueue中
+		while(!queue_12h.isEmpty()){
+			int time = queue_12h.poll();
+			set_12h.add(time);
+			int first;
+			int second;
+			int third;
+			int fourth;
+			if(timeNum == 1){
+				first =  (time * 12)/3 - 32;
+				second = (time * 12 + 3)/3 - 32;
+				third = (time * 12 + 6)/3 - 32;
+				fourth = (time * 12 + 9)/3 - 32;
+			}else{
+				first =  (time * 12)/3;
+				second = (time * 12 + 3)/3;
+				third = (time * 12 + 6)/3;
+				fourth = (time * 12 + 9)/3;
+			}
+			System.out.println(time+"--"+first+"--"+second+"--"+third+"--"+fourth);
+			for(int j = 0; j<latRange;j++){
+				for(int k =0;k<lonRange;k++){
+					if("wind".equals(FcType)){//如果要素为风，取最大值
+						short wind_u_data = 0;
+						short wind_v_data = 0;
+						
+						short first_wind_u = wsd[first * latRange * lonRange + j * lonRange + k];
+						short first_wind_v = wdr[first * latRange * lonRange + j * lonRange + k];
+						
+						short second_wind_u = wsd[second * latRange * lonRange + j * lonRange + k];
+						short second_wind_v = wdr[second * latRange * lonRange + j * lonRange + k];
+						
+						short third_wind_u = wsd[third * latRange * lonRange + j * lonRange + k];
+						short third_wind_v = wdr[third * latRange * lonRange + j * lonRange + k];
+						
+						short fourth_wind_u = wsd[fourth * latRange * lonRange + j * lonRange + k];
+						short fourth_wind_v = wdr[fourth * latRange * lonRange + j * lonRange + k];
+						
+						wind_u_data = first_wind_u > second_wind_u ? first_wind_u : second_wind_u;
+						wind_u_data = wind_u_data > third_wind_u ? wind_u_data : third_wind_u;
+						wind_u_data = wind_u_data > fourth_wind_u ? wind_u_data : fourth_wind_u;
+						
+						wind_v_data = first_wind_v > second_wind_v ? first_wind_v : second_wind_v;
+						wind_v_data = wind_v_data > third_wind_v ? wind_v_data : third_wind_v;
+						wind_v_data = wind_v_data > fourth_wind_v ? wind_v_data : fourth_wind_v;
+						
+						wsd_12h[time * latRange * lonRange + j * lonRange + k] = wind_u_data;
+						wdr_12h[time * latRange * lonRange + j * lonRange + k] = wind_u_data;
+					}else if("temp".equals(FcType)){
+						short data_max;
+						short data_min;
+						short first_data = gg[first * latRange * lonRange + j * lonRange + k];
+						short second_data = gg[second * latRange * lonRange + j * lonRange + k];
+						short third_data = gg[third * latRange * lonRange + j * lonRange + k];
+						short fourth_data = gg[fourth * latRange * lonRange + j * lonRange + k];
+						
+						data_max = first_data >second_data ? first_data : second_data;
+						data_max = data_max > third_data ? data_max : third_data;
+						data_max = data_max > fourth_data ? data_max : fourth_data;
+						temp_max_12h[time * latRange * lonRange + j * lonRange + k] = data_max;
+						data_min = first_data < second_data ? first_data : second_data;
+						data_min = data_min < third_data ? data_min : third_data;
+						data_min = data_min < fourth_data ? data_min : fourth_data;
+						temp_min_12h[time * latRange * lonRange + j * lonRange + k] = data_min;
+					}else if("rh".equals(FcType)){
+						byte data_max;
+						byte data_min;
+						byte first_data = ee[first * latRange * lonRange + j * lonRange + k];
+						byte second_data = ee[second * latRange * lonRange + j * lonRange + k];
+						byte third_data = ee[third * latRange * lonRange + j * lonRange + k];
+						byte fourth_data = ee[fourth * latRange * lonRange + j * lonRange + k];
+						
+						data_max = first_data >second_data ? first_data : second_data;
+						data_max = data_max > third_data ? data_max : third_data;
+						data_max = data_max > fourth_data ? data_max : fourth_data;
+						rh_max_12h[time * latRange * lonRange + j * lonRange + k] = data_max;
+						data_min = first_data < second_data ? first_data : second_data;
+						data_min = data_min < third_data ? data_min : third_data;
+						data_min = data_min < fourth_data ? data_min : fourth_data;
+						rh_min_12h[time * latRange * lonRange + j * lonRange + k] = data_min;
+					}else{
+						short first_data = gg[first * latRange * lonRange + j * lonRange + k];
+						short second_data = gg[second * latRange * lonRange + j * lonRange + k];
+						short third_data = gg[third * latRange * lonRange + j * lonRange + k];
+						short fourth_data = gg[fourth * latRange * lonRange + j * lonRange + k];
+						short data = new BigDecimal(first_data+second_data+third_data+fourth_data).shortValue();
+						gg_12h[time * latRange * lonRange + j * lonRange + k] = data;
+					}
+				}
+			}
+		}
 	}
 	
 	public short Lagrange_short(int X[],int Y[],int X0){   //拉格朗日插值，返回short类型值
@@ -359,22 +499,8 @@ public class Grib2ParserNgThreads implements Runnable {
 		return Y0;
 	}
 	
-	
-	
 	public void ReadGrib2File(Date date,String element,String fileNameHead,String timeStep,String elementName,String outPutPath,String filePath,String corFilePath)throws Exception{   //读nc文件，并写入内存
-		/*InputStream inputStream = Grib2ParserNg.class.getClassLoader().getResourceAsStream("configs/pro.properties");
-	 	Properties properties = new Properties();
-		properties.load(inputStream);
-		String pro = properties.getProperty(FcType);     //获取要素类型名称，并且用要素名称作为后来生成的nc文件的名称
-		String fcTime = properties.getProperty("fcTime");  //获取预报时次
-		String[] fcTimeArray = fcTime.split(","); //预报时次数组
-		String element = pro.split(",")[1].trim();//grib2文件要素名称
-		String fileNameHead = pro.split(",")[0].trim();//文件名头部分
-		String timeStep = pro.split(",")[2].trim();   //文件名时间步长
-		String elementName = pro.split(",")[3].trim();    //写nc文件的要素名称
-		String outPutPath = properties.getProperty("outPutPath");//输出目标路径
-		String filePath = properties.getProperty("filePath");//Grib文件路径
-*/		SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd");
+		SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd");
 		String fileDay = sdf.format(date);
 		int hour = date.getHours();
 		String fileDate = null;
@@ -475,19 +601,7 @@ public class Grib2ParserNgThreads implements Runnable {
 	}
 	
 	public void ReadGrib2WindFile(Date date,String elementU,String elementV,String fileNameHead,String timeStep,String elementName,String outPutPath,String filePath)throws Exception{
-		
-		/*InputStream inputStream = Grib2ParserNg.class.getClassLoader().getResourceAsStream("configs/pro.properties");
-	 	Properties properties = new Properties();
-		properties.load(inputStream);
-		String pro = properties.getProperty(FcType);     //获取要素类型名称，并且用要素名称作为后来生成的nc文件的名称
-		String elementU = pro.split(",")[1];//grib2文件要素名称
-		String elementV = pro.split(",")[2];
-		String fileNameHead = pro.split(",")[0];//文件名头部分
-		String timeStep = pro.split(",")[3];   //文件名时间步长
-		String elementName = pro.split(",")[4];    //写nc文件的要素名称
-		String outPutPath = properties.getProperty("outPutPath");//输出目标路径
-		String filePath = properties.getProperty("filePath");//Grib文件路径
-*/		SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd");
+		SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd");
 		String fileDay = sdf.format(date);
 		int hour = date.getHours();
 		String fileDate = null;
@@ -690,7 +804,7 @@ public class Grib2ParserNgThreads implements Runnable {
 		}
         double[] timeData = new double[realTime];
         int index =0;
-        Iterator<Integer> it = set.iterator();
+    	Iterator<Integer> it = set.iterator();
         while(it.hasNext()){
         	int time = it.next();
         	if(timeNum == 0 & time < 8){//如果是第一次写逐小时的文件，则需要补齐前24小时逐小时的时次
@@ -703,7 +817,7 @@ public class Grib2ParserNgThreads implements Runnable {
             	index++;
         	}
         }
-     
+        
         Arrays.sort(timeData);
 		Array timeArray = Array.factory(DataType.DOUBLE, new int[]{realTime},timeData);
 		dataFile.write(timeV, timeArray);
@@ -713,9 +827,9 @@ public class Grib2ParserNgThreads implements Runnable {
 		dataFile.close();
 	}
 	
-	public void WriteWindNcFile(String outPutPath,String elementName,String fileDate,int realTime)throws Exception{ //写风力风向的nc文件
+	public void WriteWindNcFile(String outPutPath,String elementName,String element,String fileDate,int realTime)throws Exception{ //写风力风向的nc文件
 		
-		String filename = outPutPath + elementName +"/" + elementName+ "_" + fileDate + "_" + timeNum + ".nc";
+		String filename = outPutPath + elementName +"/" + element+ "_" + fileDate + "_" + timeNum + ".nc";
 //		String filename = elementName + "_" + timeNum + ".nc";
 		System.out.println("netcdf out put path-->"+filename);
 		NetcdfFileWriter dataFile = null;
@@ -751,7 +865,7 @@ public class Grib2ParserNgThreads implements Runnable {
 		Array windD  = Array.factory(DataType.SHORT, new int[]{realTime,latng.length,lonng.length},wdr);
 		double[] timeData = new double[realTime];
         int index =0;
-        Iterator<Integer> it = set.iterator();
+    	Iterator<Integer> it = set.iterator();
         while(it.hasNext()){
         	int time = it.next();
         	if(timeNum == 0 & time < 8){//如果是第一次写逐小时的文件，则需要补齐前24小时逐小时的时次
@@ -777,12 +891,140 @@ public class Grib2ParserNgThreads implements Runnable {
 		dataFile.close();
 	}
 	
-	public void WriteNcFile_12h(String outPutPath,String elementName,String element,String fileDate)throws Exception{//写逐12小时非风力风向的nc文件
-		
+	public void WriteNcFile_12h(String outPutPath,String elementName,String element,String fileDate,int realTime)throws Exception{//写逐12小时非风力风向的nc文件
+		String filename = outPutPath + elementName +"/" + element+ "_" + fileDate + ".nc";
+//		String filename = elementName + "_" + timeNum + ".nc";
+		System.out.println("netcdf out put path-->"+filename);
+		NetcdfFileWriter dataFile = null;
+	    Nc4Chunking chunker = Nc4ChunkingStrategy.factory(Nc4Chunking.Strategy.standard,5,false);//这种类型写的文件访问速度最快
+		NetcdfFileWriter.Version version = NetcdfFileWriter.Version.netcdf4;
+	    dataFile = NetcdfFileWriter.createNew(version, filename,chunker);
+    	Dimension xDim = dataFile.addDimension(null, "lat", latRange);
+        Dimension yDim = dataFile.addDimension(null, "lon", lonRange);
+        Dimension zDim = dataFile.addDimension(null, "time", realTime);  //默认逐个小时文件的每个文件时次为48个时次
+        List<Dimension> dims_Element = new ArrayList<Dimension>();
+        List<Dimension> dims_Lat = new ArrayList<Dimension>();
+        List<Dimension> dims_Lon = new ArrayList<Dimension>();
+        List<Dimension> dims_Time = new ArrayList<Dimension>();
+        dims_Lat.add(xDim);
+        dims_Lon.add(yDim);
+        dims_Time.add(zDim);
+        dims_Element.add(zDim);
+        dims_Element.add(xDim);
+        dims_Element.add(yDim);	
+        Variable dataV = null;
+		if("rh".equals(FcType) || "cloud".equals(FcType)){    //相对湿度范围为0-100，用byte类型存储
+			dataV = dataFile.addVariable(null, elementName, DataType.BYTE,dims_Element);
+		}else{
+			dataV = dataFile.addVariable(null, elementName, DataType.SHORT,dims_Element);
+		}
+        Variable latV = dataFile.addVariable(null, "lat", DataType.FLOAT,dims_Lat);
+        Variable lonV = dataFile.addVariable(null, "lon", DataType.FLOAT,dims_Lon);
+        Variable timeV = dataFile.addVariable(null, "time", DataType.DOUBLE,dims_Time);
+        lonV.addAttribute(new Attribute("units", "degrees_east"));
+        latV.addAttribute(new Attribute("units", "degrees_north"));
+        dataFile.create();
+        if("rh".equals(FcType) || "cloud".equals(FcType)){
+			Array dataArray  = Array.factory(DataType.BYTE, new int[]{realTime,latng.length,lonng.length},ee_12h);
+			dataFile.write(dataV, dataArray);
+		}else{
+			Array dataArray  = Array.factory(DataType.SHORT, new int[]{realTime,latng.length,lonng.length},gg_12h);
+			dataFile.write(dataV, dataArray);
+		}
+        double[] timeData = new double[realTime];
+        int index =0;
+        //写逐12小时文件
+    	Iterator<Integer> it = set_12h.iterator();
+        while(it.hasNext()){
+        	int time = it.next();
+        	timeData[index] = (time + 1) * 12;
+        	index++;
+        }
+        
+        Arrays.sort(timeData);
+		Array timeArray = Array.factory(DataType.DOUBLE, new int[]{realTime},timeData);
+		dataFile.write(timeV, timeArray);
+		dataFile.write(latV, Array.factory(latng));
+		dataFile.write(lonV, Array.factory(lonng));
+		System.out.println("write netcdf success!!!");
+		dataFile.close();
 	}
 	
-	public void WriteWindNcFile_12h(String outPutPath,String elementName,String element,String fileDate)throws Exception{ //写逐12小时风力风向的nc文件
-		
+	public void WriteWindNcFile_12h(String outPutPath,String elementName,String element,String fileDate,int realTime)throws Exception{ //写逐12小时风力风向的nc文件
+		String filename = outPutPath + elementName +"/" + element+ "_" + fileDate + ".nc";
+//		String filename = elementName + "_" + timeNum + ".nc";
+		System.out.println("netcdf out put path-->"+filename);
+		NetcdfFileWriter dataFile = null;
+	    Nc4Chunking chunker = Nc4ChunkingStrategy.factory(Nc4Chunking.Strategy.standard,9,false);
+		NetcdfFileWriter.Version version = NetcdfFileWriter.Version.netcdf4;
+	    dataFile = NetcdfFileWriter.createNew(version, filename,chunker);
+    	Dimension xDim = dataFile.addDimension(null, "lat", latRange);
+        Dimension yDim = dataFile.addDimension(null, "lon", lonRange);
+        Dimension zDim = dataFile.addDimension(null, "time", realTime);
+        List<Dimension> dims_U = new ArrayList<Dimension>();
+        List<Dimension> dims_V = new ArrayList<Dimension>();
+        List<Dimension> dims_Lat = new ArrayList<Dimension>();
+        List<Dimension> dims_Lon = new ArrayList<Dimension>();
+        List<Dimension> dims_Time = new ArrayList<Dimension>();
+        dims_Lat.add(xDim);
+        dims_Lon.add(yDim);
+        dims_Time.add(zDim);
+        dims_U.add(zDim);
+        dims_U.add(xDim);
+        dims_U.add(yDim);
+        dims_V.add(zDim);
+        dims_V.add(xDim);
+        dims_V.add(yDim);
+        Variable dataU = null;
+        Variable dataV = null;
+        if("rh".equals(FcType)){
+        	dataU = dataFile.addVariable(null, "rh_max", DataType.BYTE,dims_U);
+            dataV = dataFile.addVariable(null, "rh_min", DataType.BYTE,dims_V);
+        }else if("temp".equals(FcType)){
+        	dataU = dataFile.addVariable(null, "temp_max", DataType.SHORT,dims_U);
+            dataV = dataFile.addVariable(null, "temp_min", DataType.SHORT,dims_V);
+        }else{
+        	dataU = dataFile.addVariable(null, "wind_u", DataType.SHORT,dims_U);
+            dataV = dataFile.addVariable(null, "wind_v", DataType.SHORT,dims_V);
+        }
+        
+        Variable latV = dataFile.addVariable(null, "lat", DataType.FLOAT,dims_Lat);
+        Variable lonV = dataFile.addVariable(null, "lon", DataType.FLOAT,dims_Lon);
+        Variable timeV = dataFile.addVariable(null, "time", DataType.DOUBLE,dims_Time);
+        lonV.addAttribute(new Attribute("units", "degrees_east"));
+        latV.addAttribute(new Attribute("units", "degrees_north"));
+        dataFile.create();
+        
+        Array windS  = null;
+		Array windD  = null;
+        if("temp".equals(FcType)){
+        	windS  = Array.factory(DataType.SHORT, new int[]{realTime,latng.length,lonng.length},temp_max_12h);
+    		windD  = Array.factory(DataType.SHORT, new int[]{realTime,latng.length,lonng.length},temp_min_12h);
+        }else if("wind".equals(FcType)){
+        	windS  = Array.factory(DataType.SHORT, new int[]{realTime,latng.length,lonng.length},wsd_12h);
+    		windD  = Array.factory(DataType.SHORT, new int[]{realTime,latng.length,lonng.length},wdr_12h);
+        }else{
+        	windS  = Array.factory(DataType.BYTE, new int[]{realTime,latng.length,lonng.length},rh_max_12h);
+    		windD  = Array.factory(DataType.BYTE, new int[]{realTime,latng.length,lonng.length},rh_min_12h);
+        }
+        
+		double[] timeData = new double[realTime];
+        int index =0;
+    	Iterator<Integer> it = set_12h.iterator();
+        while(it.hasNext()){
+        	int time = it.next();
+        	timeData[index] = (time + 1) * 12;
+        	index++;
+        }
+        Arrays.sort(timeData);
+		Array tiemArray  = Array.factory(DataType.DOUBLE, new int[]{realTime},timeData);
+		dataFile.write(dataU, windS);
+		dataFile.write(dataV, windD);
+		dataFile.write(timeV, tiemArray);
+		dataFile.write(latV, Array.factory(latng));
+		dataFile.write(lonV, Array.factory(lonng));
+		System.out.println("write netcdf success");
+		dataFile.close();
 	}
 	
 	public void CopyFile(String outPutPath,String elementName,String element,Date date,String timeStep){  //复制文件
@@ -812,11 +1054,11 @@ public class Grib2ParserNgThreads implements Runnable {
 			String LastFileName = outPutPath + elementName +"/" + element+ "_" + LastFileDate + "_" + t + ".nc";
 			String NextFileName = outPutPath + elementName +"/" + element+ "_" + NextFileDate + "_" + t + ".nc";
 			 try {
-			    	inStream = new FileInputStream(LastFileName);  
-			        outStream = new FileOutputStream(NextFileName);
-			        in = inStream.getChannel();
-			        out = outStream.getChannel();  
-			        in.transferTo(0, in.size(), out);  
+				 inStream = new FileInputStream(LastFileName);  
+				 outStream = new FileOutputStream(NextFileName);
+				 in = inStream.getChannel();
+				 out = outStream.getChannel();  
+				 in.transferTo(0, in.size(), out);  
 				} catch (Exception e) {
 					e.printStackTrace();
 				}finally{
