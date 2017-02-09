@@ -105,10 +105,10 @@ public class GetPointAvgError {
 		System.out.println("运行时间："+(end-begin)+"ms");
 	}
 	
-	/*public static void GetError(){
+	public static void GetError(){
 		Map map = new HashMap();
 		sectionMap = new HashMap<String, String>();
-		String path ="C:\\Users\\Robin\\Desktop\\grib2\\nc\\ObsStation.dat";
+		String path ="C:\\Users\\Robin\\Desktop\\grib2\\nc\\InObsStation.dat";
 		String path1 ="out1.txt";
 		
 		BufferedReader br = null;
@@ -184,7 +184,6 @@ public class GetPointAvgError {
 				}
 			}
 		}
-		
 		try {
 			fw.flush();
 			fw.close();
@@ -195,7 +194,7 @@ public class GetPointAvgError {
 		System.out.println(sectionMap.size());
 		//获取到点后读文件，获得每个点的平均误差值
 		
-	}*/
+	}
 	
 	public static void calculateAvg(String point,String stationId){     //获取点
 //		point = "139.91,59.99";
@@ -216,6 +215,7 @@ public class GetPointAvgError {
 			fw.append(",");
 			fw.append(section);
 			fw.newLine();
+			fw.flush();
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
@@ -253,7 +253,6 @@ public class GetPointAvgError {
 		//在这里先把实况文件解析好存入map，方便后面处理。map中key的格式为stationid+yyyyMMddHH
 		/**
 		 * 实况文件处理机制：文件每天读取两次，分别是00和12，00时从前一天23时的实况文件开始读，每3个小时读一个文件，依次循环读10天，12时从当天11时的实况文件开始读
-		 * 
 		 */
 		String day = sdf.format(date);
 		Calendar obsCal = Calendar.getInstance();
@@ -498,6 +497,9 @@ public class GetPointAvgError {
 			int[] array = dataMap.get(point);
 			int totalTemp = array[0];
 			int totalNum = array[1];
+			if(totalNum<192){
+				continue;
+			}
 			float avgTemp = totalTemp / totalNum;
 //			System.out.println(avgTemp);
 			pointAvgMap.put(point, avgTemp);
@@ -516,8 +518,7 @@ public class GetPointAvgError {
 				avgMap.put(gridKey, avgList);
 			}
 		}
-		
-		dataMap = null;   
+		dataMap = null;
 		
 		errorMap = new HashMap<String, Float>();
 		for(String gridKey : avgMap.keySet()){
@@ -598,7 +599,8 @@ public class GetPointAvgError {
 		
 //		将errorMap中的值写入nc文件中，循环经纬度范围为：0:60N,70:140E范围内的点，步长为0.01°
 //		String filename = elementName + "_" + day + fcBeginHourS+ ".nc";
-		String filename = outPutPath + elementName + "_" + day + fcBeginHourS+ ".nc";
+//		String filename = outPutPath + elementName + "_" + day + fcBeginHourS+ ".nc";
+		String filename = outPutPath + "TEM" + "_" + day + fcBeginHourS+ ".nc";
 		System.out.println("correction netcdf file name-->"+filename);
 //		String filename = "avgError1.nc";
 		NetcdfFileWriter dataFile = null;
@@ -620,7 +622,7 @@ public class GetPointAvgError {
 	        dims_Element.add(xDim);
 	        dims_Element.add(yDim);
 	        
-	        Variable dataV = dataFile.addVariable(null, "temp", DataType.FLOAT,dims_Element);
+	        Variable dataV = dataFile.addVariable(null, "TEM", DataType.FLOAT,dims_Element);
 	        Variable latV = dataFile.addVariable(null, "lat", DataType.FLOAT,dims_Lat);
 	        Variable lonV = dataFile.addVariable(null, "lon", DataType.FLOAT,dims_Lon);
 	        Variable timeV = dataFile.addVariable(null, "time", DataType.DOUBLE,dims_Time);
